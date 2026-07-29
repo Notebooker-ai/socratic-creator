@@ -1,0 +1,37 @@
+[project]
+name = "socratic-creator"
+version = "0.1.0"
+license = "MIT"
+description = "Open Notebook creator: a precomputed Socratic tutoring session — guided questions, misconception probes, sub-question hints, citation-pinned reveals"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "open-notebook-creator-sdk",
+    "esperanto>=2.19",
+    "ai-prompter>=0.3.1",
+    "langchain-core>=0.3",
+    "loguru>=0.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+]
+
+[project.entry-points."open_notebook.creators"]
+socratic = "socratic_creator:SocraticCreator"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/socratic_creator"]
+
+[tool.uv.sources]
+open-notebook-creator-sdk = { git = "https://github.com/Notebooker-ai/open-notebook-creator-sdk.git", branch = "main" }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
