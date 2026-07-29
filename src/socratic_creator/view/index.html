@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Socratic Tutor</title>
+<style>
+  /* Tutorial-hall palette: chalk on slate in dark, ink on paper in light.
+     The signature element is the dialogue ledger — a left rule that fills in
+     as nuggets are mastered, like a margin being ticked off by hand. */
+  :root {
+    --bg: #faf8f4; --panel: #ffffff; --ink: #23211d; --muted: #6f6a60;
+    --rule: #d9d4c9; --accent: #275d4e; --accent-soft: #e4efe9;
+    --warn: #8a5a2b; --warn-soft: #f4e8d8; --good: #275d4e;
+    --reveal: #f2efe7; --focus: #275d4e;
+  }
+  [data-theme="dark"] {
+    --bg: #191c1e; --panel: #21262a; --ink: #e8e5de; --muted: #98948a;
+    --rule: #383e43; --accent: #7fc0a9; --accent-soft: #24352f;
+    --warn: #d9a05f; --warn-soft: #3a2f21; --good: #7fc0a9;
+    --reveal: #262b2f; --focus: #7fc0a9;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.55 Georgia, 'Times New Roman', serif; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
+  header h1 { font-size: 1.35rem; margin: 0 0 2px; letter-spacing: .01em; }
+  header .meta { font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: .78rem; color: var(--muted); text-transform: uppercase;
+    letter-spacing: .08em; }
+  .ledger { display: flex; gap: 5px; margin: 14px 0 22px; }
+  .ledger span { flex: 1; height: 4px; background: var(--rule); border-radius: 2px; }
+  .ledger span.done { background: var(--good); }
+  .ledger span.part { background: var(--warn); }
+  .ledger span.now  { background: var(--accent); opacity: .55; }
+  .card { background: var(--panel); border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 18px 20px; margin-bottom: 14px; }
+  .eyebrow { font-family: ui-sans-serif, system-ui, sans-serif; font-size: .72rem;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+    margin-bottom: 6px; }
+  .q { font-size: 1.08rem; margin: 0 0 14px; }
+  textarea { width: 100%; min-height: 92px; font: inherit; color: inherit;
+    background: var(--bg); border: 1px solid var(--rule); border-radius: 6px;
+    padding: 10px 12px; resize: vertical; }
+  textarea:focus, button:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  button { font: 600 .86rem/1 ui-sans-serif, system-ui, sans-serif; cursor: pointer;
+    border-radius: 6px; padding: 10px 14px; border: 1px solid var(--rule);
+    background: var(--panel); color: var(--ink); }
+  button.primary { background: var(--accent); border-color: var(--accent);
+    color: var(--bg); }
+  button.subtle { color: var(--muted); }
+  button:disabled { opacity: .45; cursor: default; }
+  .hint, .probe { background: var(--accent-soft); border-left: 3px solid var(--accent);
+    border-radius: 0 6px 6px 0; padding: 10px 14px; margin-top: 10px; }
+  .probe { background: var(--warn-soft); border-left-color: var(--warn); }
+  .hint .eyebrow, .probe .eyebrow { margin-bottom: 2px; }
+  ul.check { list-style: none; padding: 0; margin: 10px 0 0; }
+  ul.check li { margin: 6px 0; }
+  ul.check label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+  ul.check input { margin-top: 4px; accent-color: var(--accent); }
+  .reveal { background: var(--reveal); border: 1px dashed var(--rule);
+    border-radius: 6px; padding: 12px 14px; margin-top: 12px; }
+  .cites { font-family: ui-sans-serif, system-ui, sans-serif; font-size: .78rem;
+    color: var(--muted); margin-top: 8px; }
+  .cites code { background: var(--bg); border: 1px solid var(--rule);
+    border-radius: 4px; padding: 1px 5px; }
+  .summary td { padding: 6px 10px 6px 0; vertical-align: top; }
+  .summary .mark { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 700; }
+  .mark.full { color: var(--good); } .mark.part { color: var(--warn); }
+  .mark.reveal { color: var(--muted); }
+  .foot { font-family: ui-sans-serif, system-ui, sans-serif; font-size: .8rem;
+    color: var(--muted); margin-top: 18px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); }
+  @media (prefers-reduced-motion: no-preference) {
+    .card { transition: border-color .25s ease; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="app" aria-live="polite">
+  <p class="foot">Waiting for the session…</p>
+</div>
+<script>
+(function () {
+  'use strict';
+  var ARTIFACT = 'open-notebook:artifact';
+  var app = document.getElementById('app');
+  var state = null;
+
+  // ---- host handshake -----------------------------------------------------
+  window.addEventListener('message', function (ev) {
+    var msg = ev.data || {};
+    if (msg.type !== ARTIFACT) return;
+    document.documentElement.setAttribute('data-theme',
+      msg.theme === 'dark' ? 'dark' : 'light');
+    // Dispatch on schema_id: keep a renderer for every schema this creator
+    // has ever emitted.
+    if (msg.schema_id === 'socratic.v1') {
+      start(msg.data || {}, msg.name || '');
+    } else {
+      app.innerHTML = '';
+      var p = document.createElement('p');
+      p.className = 'foot';
+      p.textContent = 'This viewer cannot display "' + msg.schema_id + '".';
+      app.appendChild(p);
+    }
+  });
+  try { window.parent.postMessage({ type: 'open-notebook:ready' }, '*'); } catch (e) {}
+
+  // ---- session engine -----------------------------------------------------
+  function start(data, name) {
+    var nuggets = (data.nuggets || []).slice();
+    state = {
+      title: data.title || name || 'Socratic Session',
+      persona: data.persona || '',
+      allowReveal: data.allow_reveal !== false,
+      nuggets: nuggets,
+      i: 0,
+      // per-nugget: {hintsUsed, probed, outcome: 'full'|'part'|'reveal'|null}
+      log: nuggets.map(function () { return { hintsUsed: 0, probed: {}, outcome: null }; })
+    };
+    if (!nuggets.length) {
+      app.textContent = 'This session has no content.';
+      return;
+    }
+    renderNugget();
+  }
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  function doneIds() {
+    var s = {};
+    state.nuggets.forEach(function (n, idx) {
+      if (state.log[idx].outcome) s[n.id] = true;
+    });
+    return s;
+  }
+
+  function nextIndex() {
+    var done = doneIds();
+    for (var idx = 0; idx < state.nuggets.length; idx++) {
+      var n = state.nuggets[idx];
+      if (state.log[idx].outcome) continue;
+      var ok = (n.requires || []).every(function (r) { return done[r]; });
+      if (ok) return idx;
+    }
+    return -1;
+  }
+
+  function ledger() {
+    var bar = el('div', 'ledger');
+    bar.setAttribute('role', 'img');
+    var doneCount = state.log.filter(function (l) { return l.outcome; }).length;
+    bar.setAttribute('aria-label',
+      doneCount + ' of ' + state.nuggets.length + ' complete');
+    state.nuggets.forEach(function (_, idx) {
+      var s = el('span');
+      var o = state.log[idx].outcome;
+      if (o === 'full') s.classList.add('done');
+      else if (o) s.classList.add('part');
+      else if (idx === state.i) s.classList.add('now');
+      bar.appendChild(s);
+    });
+    return bar;
+  }
+
+  function header() {
+    var h = el('header');
+    var m = el('div', 'meta',
+      state.persona ? 'Socratic session · with ' + state.persona : 'Socratic session');
+    h.appendChild(m);
+    h.appendChild(el('h1', null, state.title));
+    return h;
+  }
+
+  function renderNugget() {
+    var idx = nextIndex();
+    if (idx === -1) return renderSummary();
+    state.i = idx;
+    var n = state.nuggets[idx];
+    var log = state.log[idx];
+    app.innerHTML = '';
+    app.appendChild(header());
+    app.appendChild(ledger());
+
+    var card = el('div', 'card');
+    var kind = n.kind === 'synthesis' ? 'Synthesis · combine what you know'
+      : (idx + 1) + ' of ' + state.nuggets.length + ' · ' + (n.question_type || 'question');
+    card.appendChild(el('div', 'eyebrow', kind));
+    card.appendChild(el('p', 'q', n.question));
+
+    var ta = el('textarea');
+    ta.placeholder = 'Think out loud here — writing it forces the reasoning.';
+    ta.setAttribute('aria-label', 'Your answer');
+    card.appendChild(ta);
+
+    var extras = el('div');
+    card.appendChild(extras);
+
+    var row = el('div', 'row');
+    var check = el('button', 'primary', 'Check myself');
+    var stuck = el('button', null, "I'm not sure — ask me smaller");
+    row.appendChild(check);
+    row.appendChild(stuck);
+    (n.misconceptions || []).forEach(function (m, mi) {
+      var b = el('button', 'subtle', 'I think: ' + m.label);
+      b.onclick = function () {
+        if (log.probed[mi]) return;
+        log.probed[mi] = true;
+        var p = el('div', 'probe');
+        p.appendChild(el('div', 'eyebrow', 'Then consider'));
+        p.appendChild(el('div', null, m.question));
+        extras.appendChild(p);
+        b.disabled = true;
+        p.scrollIntoView({ block: 'nearest' });
+      };
+      row.appendChild(b);
+    });
+    card.appendChild(row);
+
+    stuck.onclick = function () { giveHint(n, log, extras, stuck); };
+    check.onclick = function () { renderChecklist(n, log, card, ta.value); };
+
+    app.appendChild(card);
+    ta.focus();
+  }
+
+  function giveHint(n, log, extras, stuckBtn) {
+    var hints = n.hints || [];
+    if (log.hintsUsed < hints.length) {
+      var h = el('div', 'hint');
+      h.appendChild(el('div', 'eyebrow', 'Smaller question ' + (log.hintsUsed + 1)));
+      h.appendChild(el('div', null, hints[log.hintsUsed]));
+      extras.appendChild(h);
+      log.hintsUsed++;
+      h.scrollIntoView({ block: 'nearest' });
+    }
+    if (log.hintsUsed >= hints.length) {
+      stuckBtn.disabled = !state.allowReveal ? false : true;
+      if (state.allowReveal) {
+        var r = el('div', 'hint');
+        r.appendChild(el('div', 'eyebrow', 'Out of hints'));
+        r.appendChild(el('div', null,
+          'Give it your best answer, then press “Check myself” — the model answer unlocks there.'));
+        extras.appendChild(r);
+      } else {
+        stuckBtn.disabled = true;
+      }
+    }
+  }
+
+  function renderChecklist(n, log, card, answerText) {
+    // Replace the card body with the self-assessment.
+    card.innerHTML = '';
+    card.appendChild(el('div', 'eyebrow', 'Your answer, against the checklist'));
+    if (answerText && answerText.trim()) {
+      var mine = el('div', 'reveal');
+      mine.appendChild(el('div', 'eyebrow', 'You wrote'));
+      mine.appendChild(el('div', null, answerText.trim()));
+      card.appendChild(mine);
+    }
+    card.appendChild(el('p', 'q', 'Which of these did your answer actually cover?'));
+    var ul = el('ul', 'check');
+    var boxes = [];
+    (n.expected_points || []).forEach(function (pt) {
+      var li = el('li');
+      var lab = el('label');
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      boxes.push(cb);
+      lab.appendChild(cb);
+      lab.appendChild(el('span', null, pt));
+      li.appendChild(lab);
+      ul.appendChild(li);
+    });
+    card.appendChild(ul);
+
+    var revealWrap = el('div');
+    card.appendChild(revealWrap);
+
+    var row = el('div', 'row');
+    var done = el('button', 'primary', 'Continue');
+    row.appendChild(done);
+    var canReveal = state.allowReveal;
+    var revealed = false;
+    if (canReveal) {
+      var rv = el('button', null, 'Show the model answer');
+      rv.onclick = function () {
+        if (revealed) return;
+        revealed = true;
+        rv.disabled = true;
+        var box = el('div', 'reveal');
+        box.appendChild(el('div', 'eyebrow', 'Model answer'));
+        box.appendChild(el('div', null, n.reveal && n.reveal.answer || ''));
+        var cites = (n.reveal && n.reveal.citations) || [];
+        if (cites.length) {
+          var c = el('div', 'cites');
+          c.appendChild(document.createTextNode('Grounded in: '));
+          cites.forEach(function (id, k) {
+            if (k) c.appendChild(document.createTextNode(', '));
+            var code = el('code', null, id);
+            c.appendChild(code);
+          });
+          box.appendChild(c);
+        }
+        revealWrap.appendChild(box);
+      };
+      row.appendChild(rv);
+    }
+    card.appendChild(row);
+
+    done.onclick = function () {
+      var total = boxes.length;
+      var got = boxes.filter(function (b) { return b.checked; }).length;
+      log.outcome = revealed ? 'reveal' : (got === total && total > 0 ? 'full' : 'part');
+      if (log.outcome === 'full' && n.deeper) return renderDeeper(n);
+      renderNugget();
+    };
+  }
+
+  function renderDeeper(n) {
+    app.innerHTML = '';
+    app.appendChild(header());
+    app.appendChild(ledger());
+    var card = el('div', 'card');
+    card.appendChild(el('div', 'eyebrow', 'You earned the stretch question'));
+    card.appendChild(el('p', 'q', n.deeper));
+    var ta = el('textarea');
+    ta.placeholder = 'No checklist for this one — it is yours to wrestle with.';
+    card.appendChild(ta);
+    var row = el('div', 'row');
+    var go = el('button', 'primary', 'Continue');
+    go.onclick = function () { renderNugget(); };
+    row.appendChild(go);
+    card.appendChild(row);
+    app.appendChild(card);
+  }
+
+  function renderSummary() {
+    app.innerHTML = '';
+    app.appendChild(header());
+    app.appendChild(ledger());
+    var card = el('div', 'card');
+    card.appendChild(el('div', 'eyebrow', 'Session complete'));
+    var full = [], part = [], rev = [];
+    state.nuggets.forEach(function (n, idx) {
+      var o = state.log[idx].outcome;
+      (o === 'full' ? full : o === 'part' ? part : rev).push(n.title);
+    });
+    var t = document.createElement('table');
+    t.className = 'summary';
+    function rows(list, mark, cls, label) {
+      list.forEach(function (title) {
+        var tr = document.createElement('tr');
+        var td1 = el('td'); td1.appendChild(el('span', 'mark ' + cls, mark));
+        td1.appendChild(el('span', 'sr-only', ' ' + label));
+        var td2 = el('td', null, title);
+        tr.appendChild(td1); tr.appendChild(td2); t.appendChild(tr);
+      });
+    }
+    rows(full, '✓', 'full', 'demonstrated');
+    rows(part, '◐', 'part', 'partly there — revisit');
+    rows(rev, '👁', 'reveal', 'needed the answer — revisit first');
+    card.appendChild(t);
+    card.appendChild(el('p', 'foot',
+      full.length + ' demonstrated · ' + part.length + ' to revisit · ' +
+      rev.length + ' revealed. No grade — the point is knowing which is which.'));
+    var row = el('div', 'row');
+    var again = el('button', 'primary', 'Run the session again');
+    again.onclick = function () {
+      state.log = state.nuggets.map(function () {
+        return { hintsUsed: 0, probed: {}, outcome: null };
+      });
+      renderNugget();
+    };
+    var copy = el('button', null, 'Copy session report');
+    copy.onclick = function () {
+      var lines = ['# ' + state.title, ''];
+      state.nuggets.forEach(function (n, idx) {
+        var o = state.log[idx].outcome || 'skipped';
+        lines.push('- [' + o + '] ' + n.title);
+      });
+      var txt = lines.join('\n');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(function () {
+          copy.textContent = 'Copied';
+        }, function () { fallbackCopy(txt, card); });
+      } else { fallbackCopy(txt, card); }
+    };
+    row.appendChild(again);
+    row.appendChild(copy);
+    card.appendChild(row);
+    app.appendChild(card);
+  }
+
+  function fallbackCopy(txt, card) {
+    var ta = el('textarea');
+    ta.value = txt;
+    ta.setAttribute('aria-label', 'Session report');
+    card.appendChild(ta);
+    ta.select();
+  }
+})();
+</script>
+</body>
+</html>
