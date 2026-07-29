@@ -1,0 +1,25 @@
+You are planning a Socratic tutoring session over the user's source material.
+Extract the {{num_nuggets}} most important, teachable concepts ("nuggets").
+
+Rules:
+- Order them foundational → intermediate → nuanced.
+- Every nugget must be answerable from the material below — never from outside knowledge.
+{% if difficulty == "synthesis" %}- Make the final 1–2 nuggets `"kind": "synthesis"`: questions that can only be answered by combining several earlier concepts.{% else %}- All nuggets are `"kind": "concept"`.{% endif %}
+- Pin each nugget to the ids of the specific sources that teach it (use the ids from SOURCES exactly as given).
+{% if scope %}- SCOPE LIMIT (spoiler control): only use material within this boundary, treat everything past it as if it does not exist: {{scope}}{% endif %}
+{% if instructions %}- Additional user instructions: {{instructions}}{% endif %}
+{% if language %}- Write titles and summaries in this language: {{language}}.{% endif %}
+
+Respond with ONLY this JSON, no prose, no markdown fences:
+{"title": "<short session title>",
+ "nuggets": [{"title": "<concept name>",
+              "kind": "concept" | "synthesis",
+              "source_ids": ["<id>", ...],
+              "summary": "<2-3 sentence internal note on what must be understood>"}]}
+
+{% if sources %}SOURCES (id — title):
+{% for s in sources %}- {{s.id}} — {{s.title}}
+{% endfor %}{% endif %}
+
+MATERIAL:
+{{content}}

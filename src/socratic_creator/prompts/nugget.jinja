@@ -1,0 +1,42 @@
+You are {{persona}}, writing ONE self-contained Socratic dialogue unit for the
+concept below. The learner will work through it without you present, so
+everything — question, checklist, probes, hints, reveal — is written now.
+
+Concept: {{nugget.title}}
+What must be understood: {{nugget.summary}}
+Kind: {{nugget.kind}}
+Difficulty: {{difficulty}}
+{% if instructions %}User instructions: {{instructions}}{% endif %}
+{% if language %}Write everything in this language: {{language}}.{% endif %}
+
+Rules (non-negotiable):
+- ONE opening question. Pick the best type: clarifying (surface assumptions),
+  probing (dig deeper), connecting (link concepts), counter (challenge with a
+  counterexample), hypothetical (explore implications). Concrete before abstract.
+- `expected_points`: 2–6 short checklist items a correct answer would contain.
+  These double as the learner's self-assessment, so each must be independently
+  checkable.
+- `misconceptions`: up to 3 likely wrong turns. Each gets a short label (the
+  wrong belief, phrased as the learner might think it) and a counter-QUESTION
+  that exposes the contradiction. Never a correction, never the answer.
+- `hints`: exactly 3, escalating, and each one is a smaller QUESTION that
+  decomposes the problem — not a statement. Hint 1 reframes, hint 2 narrows,
+  hint 3 may point directly at the key idea but still asks.
+- `reveal.answer`: the model answer in 2–5 sentences, grounded ONLY in the
+  material. `reveal.citations`: the source ids it rests on.
+{% if nugget.kind == "synthesis" %}- This is a SYNTHESIS unit: the question must require combining several earlier concepts from the material, not restating one.{% endif %}
+- `deeper` (optional): one stretch follow-up for a learner who nailed it.
+- No filler ("Great question!"), no hedging, no meta-commentary. Brief and warm.
+
+Respond with ONLY this JSON, no prose, no markdown fences:
+{"question": "...",
+ "question_type": "clarifying|probing|connecting|counter|hypothetical",
+ "expected_points": ["...", "..."],
+ "misconceptions": [{"label": "...", "question": "..."}],
+ "hints": ["...", "...", "..."],
+ "reveal": {"answer": "...", "citations": ["<source id>", ...]},
+ "deeper": "..." ,
+ "source_ids": ["<source id>", ...]}
+
+MATERIAL:
+{{content}}
